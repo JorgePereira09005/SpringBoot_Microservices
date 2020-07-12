@@ -1,13 +1,17 @@
 package jpmc.moviecatalogservice.Controllers;
 
+import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
 import jpmc.moviecatalogservice.models.CatalogItem;
 import jpmc.moviecatalogservice.models.Movie;
 import jpmc.moviecatalogservice.models.Rating;
 import jpmc.moviecatalogservice.models.UserRating;
+import jpmc.moviecatalogservice.services.MovieInfo;
+import jpmc.moviecatalogservice.services.UserRatingInfo;
 import org.apache.catalina.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,19 +36,22 @@ public class MovieCatalogResource {
     private DiscoveryClient discoveryClient;*/
 
     @Autowired
-    private WebClient.Builder webClientBuilder;
+    MovieInfo movieInfo;
 
-    @RequestMapping("/{userId}")
+    @Autowired
+    UserRatingInfo userRatingInfo;
+
+    @Autowired
+    WebClient.Builder webClientBuilder;
+
+    @RequestMapping(path = "/{userId}", produces= MediaType.APPLICATION_JSON_VALUE)
     public List<CatalogItem> getCatalog(@PathVariable("userId") String userId) {
 
-        UserRating ratings = restTemplate.getForObject(
-                "http://ratings-data-service/ratingsdata/users/" + userId, UserRating.class);
+        UserRating ratings = userRatingInfo.getUserRating(userId);
 
-        return ratings.getUserRating().stream().map(rating -> {
+        return ratings.getUserRatings().stream().map(rating -> {
             //for each movie ID, call movie info service to get details
-            Movie movie = restTemplate.getForObject("http://movie-info-service/movies/" + rating.getMovieId(), Movie.class);
-            //put it all together
-            return new CatalogItem(movie.getName(), "Da first matrix is da best", rating.getRating());
+            return movieInfo.getCatalogItem(rating);
         }).collect(Collectors.toList());
 
         /*Movie movie = webClientBuilder.build()
@@ -53,7 +60,11 @@ public class MovieCatalogResource {
                     .retrieve()
                     .bodyToMono(Movie.class)
                     .block();*/
-
     }
+
+    /*//shouldn't make any calls. Keep it simples, avoid errors.
+    public List<CatalogItem> getFallbackCatalog(@PathVariable("userId") String userId) {
+        return Arrays.asList(new CatalogItem("No movie", "", 0));
+    }*/
 
 }
